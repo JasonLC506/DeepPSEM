@@ -245,10 +245,10 @@ class WordUserEmb(NN):
 
 if __name__ == "__main__":
     m = WordUserEmb(
-        n_words=10,
-        n_users=10,
-        n_labels=5,
         data_spec={
+            "n_words": 10,
+            "n_users": 10,
+            "n_labels": 5,
             "max_length": 2,
             "size_context": 2
         },

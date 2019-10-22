@@ -4,7 +4,7 @@ import _pickle as cPickle
 import numpy as np
 
 from experiment import DataDUELoader, json_reader, evaluate
-from models import WordUserEmb
+from models import Caden
 from common.readlogboard import read
 
 
@@ -21,7 +21,9 @@ def train(
         max_doc_length=30,
         size_context=2,
         model_name=None,
-        restore_path=None
+        restore_path=None,
+        w_emb_path="../ckpt/w_emb",
+        u_emb_path="../ckpt/u_emb"
 ):
     np.random.seed(RANDOM_SEED_NP)
     data_train = DataDUELoader(
@@ -45,12 +47,15 @@ def train(
         data_valid = None
 
     model_spec = json_reader(config_file)
-    model = WordUserEmb(
+    model = Caden(
         data_spec=data_train.data_spec,
         model_spec=model_spec,
         model_name=model_name
     )
-    model.initialization()
+    model.initialization(
+        w_emb_file=w_emb_path,
+        u_emb_file=u_emb_path
+    )
     if restore_path is not None:
         model.restore(restore_path)
 
@@ -68,36 +73,64 @@ def train(
     print("best_epoch by validation loss: %d" % best_epoch)
 
 
-def save_emb(
+def test(
         config_file,
         meta_data_file,
         id_map,
         dataToken,
-        batch_data_dir_train,
-        batch_data_dir_valid=None,
+        batch_data_dir,
         max_doc_length=30,
         size_context=2,
         model_name=None,
-        restore_path=None,
-        emb_save_path="../ckpt/"
+        restore_path=None
 ):
-    data_train = DataDUELoader(
+    np.random.seed(RANDOM_SEED_NP)
+    data = DataDUELoader(
         meta_data_file=meta_data_file,
-        batch_data_dir=batch_data_dir_train,
+        batch_data_dir=batch_data_dir,
         id_map=id_map,
         dataToken=dataToken,
         max_doc_length=max_doc_length,
         size_context=size_context
     )
+
     model_spec = json_reader(config_file)
-    model = WordUserEmb(
-        data_spec=data_train.data_spec,
+    model = Caden(
+        data_spec=data.data_spec,
         model_spec=model_spec,
         model_name=model_name
     )
     model.initialization()
-    model.restore(restore_path)
-    model.save_embs(emb_save_path)
+    if restore_path is not None:
+        model.restore(restore_path)
+
+    perf = performance(model, data)
+    print("ckpt_path: %s" % restore_path)
+    print("performance: %s" % str(perf))
+
+
+def performance(
+            model_local,
+            data_local
+    ):
+    preds = model_local.predict(
+        data_generator=data_local
+    )
+    labels = []
+    for data_batched in data_local.generate(
+            batch_size=512,
+            random_shuffle=False
+    ):
+        labels.append(data_batched["label"])
+    labels = np.concatenate(labels, axis=0)
+    # one-hot to index #
+    trues = np.argmax(labels, axis=-1)
+
+    perf = evaluate(
+        preds=preds,
+        trues=trues
+    )
+    return perf
 
 
 class ArgParse(object):
@@ -106,9 +139,10 @@ class ArgParse(object):
         parser.add_argument("-dm", "--data_name", default="foxnews_nolike")
         parser.add_argument("-mdl", "--max_doc_length", default=30, type=int)
         parser.add_argument("-sc", "--size_context", default=2, type=int)
-        parser.add_argument("-cf", "--config_file", default="../models/word_user_emb_config.json")
-        parser.add_argument("-rp", "--restore_path", default="../ckpt/")
-        parser.add_argument("-mn", "--model_name", default="test")
+        parser.add_argument("-cf", "--config_file", default="../models/caden_config.json")
+        parser.add_argument("-rp", "--restore_path", default=None)
+        parser.add_argument("-ep", "--emb_path", default="../ckpt/test")
+        parser.add_argument("-mn", "--model_name", default="caden")
         parser.add_argument("-vt", "--valid_test", default="v", choices=["v", "t"])
         self.parser = parser
 
@@ -149,18 +183,20 @@ if __name__ == "__main__":
     meta_data_on_valid_file = data_dir + "meta_data_on_shell_valid"
     meta_data_on_test_file = data_dir + "meta_data_on_shell_test"
 
-    # train(
-    #     config_file=args.config_file,
-    #     meta_data_file=meta_data_train_file,
-    #     id_map=id_map_reverse,
-    #     dataToken=dataToken,
-    #     batch_data_dir_train=batch_rBp_dir,
-    #     batch_data_dir_valid=batch_valid_on_shell_dir,
-    #     max_doc_length=args.max_doc_length,
-    #     size_context=args.size_context,
-    #     model_name=args.data_name if args.model_name is None else args.model_name + "_" + args.data_name,
-    #     restore_path=args.restore_path,
-    # )
+    train(
+        config_file=args.config_file,
+        meta_data_file=meta_data_train_file,
+        id_map=id_map_reverse,
+        dataToken=dataToken,
+        batch_data_dir_train=batch_rBp_dir,
+        batch_data_dir_valid=batch_valid_on_shell_dir,
+        max_doc_length=args.max_doc_length,
+        size_context=args.size_context,
+        model_name=args.data_name if args.model_name is None else args.model_name + "_" + args.data_name,
+        restore_path=args.restore_path,
+        w_emb_path=args.emb_path + "_" + args.data_name + "/" + "_w_emb",
+        u_emb_path=args.emb_path + "_" + args.data_name + "/" + "_u_emb",
+    )
 
     # if args.restore_path is not None:
     #     if os.path.isdir(args.restore_path):
@@ -174,17 +210,17 @@ if __name__ == "__main__":
     # else:
     #     restore_paths = None
 
-    restore_path = args.restore_path + args.model_name + "_" + args.data_name + "/"
-    save_emb(
-        config_file=args.config_file,
-        meta_data_file=meta_data_train_file,
-        id_map=id_map_reverse,
-        dataToken=dataToken,
-        batch_data_dir_train=batch_rBp_dir,
-        batch_data_dir_valid=batch_valid_on_shell_dir,
-        max_doc_length=args.max_doc_length,
-        size_context=args.size_context,
-        model_name=args.data_name if args.model_name is None else args.model_name + "_" + args.data_name,
-        restore_path=restore_path + "epoch_%03d" % 0,
-        emb_save_path=restore_path
-    )
+    # restore_path = args.restore_path + args.model_name + "_" + args.data_name + "/"
+    # save_emb(
+    #     config_file=args.config_file,
+    #     meta_data_file=meta_data_train_file,
+    #     id_map=id_map_reverse,
+    #     dataToken=dataToken,
+    #     batch_data_dir_train=batch_rBp_dir,
+    #     batch_data_dir_valid=batch_valid_on_shell_dir,
+    #     max_doc_length=args.max_doc_length,
+    #     size_context=args.size_context,
+    #     model_name=args.data_name if args.model_name is None else args.model_name + "_" + args.data_name,
+    #     restore_path=restore_path + "epoch_%03d" % 0,
+    #     emb_save_path=restore_path
+    # )

@@ -1,0 +1,11 @@
+{
+    "emb_dim": 100,
+    "rnn_dim": 50,
+    "score_hidden_dim": 50,
+    "hidden_dim": 100,
+    "learning_rate": 0.0001,
+    "l2_regularization": 1e-7,
+    "batch_size": 512,
+    "max_epoch": 100,
+    "name": "Caden"
+}

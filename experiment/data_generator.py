@@ -33,6 +33,7 @@ class DataDUELoader(object):
         self.dataToken = dataToken
         self.max_doc_length = max_doc_length
         self.size_context = size_context
+        self.size_local = self.size_context + 1
         self.paddle_index = (self.V + 1 + paddle_index) % (self.V + 1)
         self.data = dict()
         self.data_size = self.n_reactions = 0
@@ -87,12 +88,14 @@ class DataDUELoader(object):
             texts_neg.append(new_text_neg[:self.max_doc_length])
             lengths.append(len(self.dataToken[i]))
         contextToken = self.context_generate(texts, self.size_context, self.paddle_index)
+        localToken = self.local_generate(texts, self.size_context, self.paddle_index)
 
         print("total documents: %d" % len(texts))
         self.data["wids"] = np.array(texts, dtype=np.int64)
         self.data["wids_neg"] = np.array(texts_neg, dtype=np.int64)
         self.data["cids"] = np.array(contextToken, dtype=np.int64)
         self.data["lengths"] = np.array(lengths, dtype=np.int64)
+        self.data["wids_loc"] = np.array(localToken, dtype=np.int64)
 
     def text_negative_sampling(
             self,
@@ -139,6 +142,26 @@ class DataDUELoader(object):
             contexts.append(context)
         return contexts
 
+    @staticmethod
+    def local_generate(
+            texts,
+            size_context,
+            paddle_index
+    ):
+        assert size_context % 2 == 0
+        size = size_context // 2
+        pads = [paddle_index for _ in range(size)]
+        localToken = []
+        for text in texts:
+            text_pad = pads + text + pads
+            local = [
+                (
+                    text_pad[i - size: i + size + 1]
+                ) for i in range(size, len(text_pad) - size)
+            ]
+            localToken.append(local)
+        return localToken
+
     def generate(
             self,
             batch_size=1,
@@ -177,6 +200,7 @@ class DataDUELoader(object):
             "wids_neg": self.data["wids_neg"][dids],
             "cids": self.data["cids"][dids],
             "lengths": self.data["lengths"][dids],
+            "wids_loc": self.data["wids_loc"][dids],
             "label": emots
         }
         return data
@@ -188,7 +212,8 @@ class DataDUELoader(object):
             "n_users": self.U,
             "n_labels": self.E,
             "max_length": self.max_doc_length,
-            "size_context": self.size_context
+            "size_context": self.size_context,
+            "size_local": self.size_local
         }
 
 
