@@ -103,7 +103,7 @@ def save_emb(
 class ArgParse(object):
     def __init__(self):
         parser = argparse.ArgumentParser()
-        parser.add_argument("-dm", "--data_name", default="foxnews_nolike")
+        parser.add_argument("-dm", "--data_name", default="period_foxnews_nolike")
         parser.add_argument("-mdl", "--max_doc_length", default=30, type=int)
         parser.add_argument("-sc", "--size_context", default=2, type=int)
         parser.add_argument("-cf", "--config_file", default="../models/word_user_emb_config.json")
